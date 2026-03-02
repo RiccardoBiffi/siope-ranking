@@ -1,0 +1,63 @@
+university,city,region,lat,lon,students,faculty,siope_code
+Università di Bari Aldo Moro,Bari,Puglia,41.1171,16.8719,43000,1900,080001
+Politecnico di Bari,Bari,Puglia,41.1171,16.8719,12000,650,080002
+Università della Basilicata,Potenza,Basilicata,40.6404,15.8056,7000,420,170001
+Università della Calabria,Rende,Calabria,39.3606,16.2265,28000,1400,180001
+Università Mediterranea di Reggio Calabria,Reggio Calabria,Calabria,38.1112,15.6479,5500,330,180002
+Università della Campania Luigi Vanvitelli,Caserta,Campania,41.0733,14.3326,22000,1250,150001
+Università Federico II di Napoli,Napoli,Campania,40.8518,14.2681,78000,3100,150002
+Università Parthenope,Napoli,Campania,40.8518,14.2681,15000,700,150003
+Università L'Orientale,Napoli,Campania,40.8518,14.2681,11000,600,150004
+Università del Sannio,Benevento,Campania,41.1298,14.7826,8000,500,150005
+Università di Salerno,Fisciano,Campania,40.7704,14.7929,35000,1700,150006
+Università di Bologna,Bologna,Emilia-Romagna,44.4949,11.3426,87000,2900,370001
+Università di Ferrara,Ferrara,Emilia-Romagna,44.8381,11.6198,24000,1100,370002
+Università di Modena e Reggio Emilia,Modena,Emilia-Romagna,44.6471,10.9252,27000,1300,370003
+Università di Parma,Parma,Emilia-Romagna,44.8015,10.3279,29000,1200,370004
+Università di Trieste,Trieste,Friuli-Venezia Giulia,45.6495,13.7768,15000,900,060001
+Università di Udine,Udine,Friuli-Venezia Giulia,46.0711,13.2346,17000,850,060002
+Università di Roma La Sapienza,Roma,Lazio,41.9028,12.4964,103000,3500,120001
+Università di Roma Tor Vergata,Roma,Lazio,41.9028,12.4964,39000,1800,120002
+Università Roma Tre,Roma,Lazio,41.9028,12.4964,35000,1600,120003
+Università di Cassino e del Lazio Meridionale,Cassino,Lazio,41.4931,13.8333,9000,520,120004
+Università di Genova,Genova,Liguria,44.4056,8.9463,32000,1400,070001
+Politecnico di Milano,Milano,Lombardia,45.4642,9.19,48000,1700,030001
+Università degli Studi di Milano,Milano,Lombardia,45.4642,9.19,62000,2400,030002
+Università di Milano-Bicocca,Milano,Lombardia,45.4642,9.19,37000,1450,030003
+Università di Foggia,Foggia,Puglia,41.4622,15.5446,17000,820,080003
+Università di Bergamo,Bergamo,Lombardia,45.6983,9.6773,18000,780,030004
+Università di Brescia,Brescia,Lombardia,45.5416,10.2118,17000,850,030005
+Università dell'Insubria,Varese,Lombardia,45.8206,8.825,13000,700,030006
+Università di Pavia,Pavia,Lombardia,45.1847,9.1582,26000,1200,030007
+Politecnico delle Marche,Ancona,Marche,43.6158,13.5189,15000,700,110001
+Università di Camerino,Camerino,Marche,43.1356,13.068,8000,430,110002
+Università di Macerata,Macerata,Marche,43.3002,13.4538,9000,420,110003
+Università del Molise,Campobasso,Molise,41.56,14.6624,7000,360,140001
+Università del Piemonte Orientale,Vercelli,Piemonte,45.3202,8.4186,16000,800,010001
+Politecnico di Torino,Torino,Piemonte,45.0703,7.6869,37000,1450,010002
+Università di Torino,Torino,Piemonte,45.0703,7.6869,80000,2800,010003
+Università di Sassari,Sassari,Sardegna,40.7259,8.5557,13000,750,200001
+Università di Cagliari,Cagliari,Sardegna,39.2238,9.1217,26000,1200,200002
+Università di Catania,Catania,Sicilia,37.5079,15.083,38000,1600,190001
+Università di Messina,Messina,Sicilia,38.1938,15.554,23000,1100,190002
+Università di Palermo,Palermo,Sicilia,38.1157,13.3615,45000,1900,190003
+Università del Salento,Lecce,Puglia,40.3515,18.175,26000,1200,080004
+Università di Siena,Siena,Toscana,43.3188,11.3308,17000,900,090001
+Università di Firenze,Firenze,Toscana,43.7696,11.2558,50000,2200,090002
+Università di Pisa,Pisa,Toscana,43.7228,10.4017,51000,2100,090003
+Scuola Normale Superiore di Pisa,Pisa,Toscana,43.7228,10.4017,900,180,090004
+Scuola Superiore Sant'Anna,Pisa,Toscana,43.7228,10.4017,1200,200,090005
+Università per Stranieri di Siena,Siena,Toscana,43.3188,11.3308,2000,120,090006
+Università per Stranieri di Perugia,Perugia,Umbria,43.1107,12.3908,1800,110,100001
+Università di Perugia,Perugia,Umbria,43.1107,12.3908,29000,1300,100002
+Università di Trento,Trento,Trentino-Alto Adige,46.0748,11.1217,17000,900,040001
+Università della Valle d'Aosta,Aosta,Valle d'Aosta,45.737,7.3201,4000,220,020002
+Università Ca' Foscari Venezia,Venezia,Veneto,45.4408,12.3155,22000,950,050001
+Università IUAV di Venezia,Venezia,Veneto,45.4408,12.3155,4500,260,050002
+Università di Padova,Padova,Veneto,45.4064,11.8768,70000,2800,050003
+Università di Verona,Verona,Veneto,45.4384,10.9916,26000,1200,050004
+Università di Urbino Carlo Bo,Urbino,Marche,43.7262,12.6363,13000,650,110004
+Gran Sasso Science Institute,L'Aquila,Abruzzo,42.3498,13.3995,700,140,130001
+Università dell'Aquila,L'Aquila,Abruzzo,42.3498,13.3995,19000,900,130002
+Università Gabriele d'Annunzio,Chieti,Abruzzo,42.3512,14.1675,24000,1100,130003
+Università di Teramo,Teramo,Abruzzo,42.6589,13.7044,9000,430,130004
