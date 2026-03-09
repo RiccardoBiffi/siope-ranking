@@ -17,3 +17,5 @@ htmlcov/
 Thumbs.db
 .idea/
 .vscode/
+
+data/
