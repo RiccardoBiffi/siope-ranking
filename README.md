@@ -1,24 +1,26 @@
 # siope-ranking
 
-Pipeline e dashboard per analizzare i dati SIOPE delle università italiane (62 atenei) e produrre ranking interattivi.
+Pipeline e dashboard per analizzare i bilanci annuali delle universita italiane insieme a iscritti, docenti e metadati geografici.
 
 ## Cosa fa il progetto
 
-1. **Raccolta dati SIOPE**: script per scaricare transazioni annuali per ateneo.
+1. **Pre-processing workbook**: legge il file Excel nazionale con bilanci, iscritti e docenti.
 2. **Pre-processing professionale**:
-   - normalizzazione su numero studenti e docenti;
-   - KPI economici comparabili;
-   - metadati geografici (regione, città, coordinate).
+   - normalizzazione su studenti e docenti;
+   - KPI finanziari comparabili per ateneo e anno;
+   - breakdown per categoria generale, macrocategoria e categoria;
+   - metadati geografici (regione, citta, coordinate).
 3. **Dashboard interattiva**:
    - ranking dinamico con scelta metrica e anno;
-   - grafico dell'andamento anno-per-anno per singolo ateneo.
+   - trend storico per singolo ateneo;
+   - composizione del bilancio per categoria.
 
 ## Struttura
 
-- `config/universities.csv`: anagrafica dei 62 atenei con metadati.
-- `src/siope_ranking/data_pipeline.py`: download dati SIOPE + costruzione KPI.
-- `src/siope_ranking/demo_data.py`: genera dataset demo realistico quando l'endpoint SIOPE non è disponibile.
-- `src/siope_ranking/dashboard.py`: web app Streamlit con ranking e trend.
+- `data/processed/Bilanci, iscritti e docenti - nazionali.xlsx`: sorgente principale.
+- `src/siope_ranking/data_pipeline.py`: preprocessing workbook + fallback opzionale SIOPE.
+- `src/siope_ranking/dashboard.py`: web app Streamlit con ranking, trend e breakdown.
+- `src/siope_ranking/tabular_import.py`: utilita per convertire Excel/CSV in CSV pulito.
 
 ## Installazione
 
@@ -30,21 +32,43 @@ pip install -r requirements.txt
 
 ## Generare dataset
 
-### Opzione A - dati reali da SIOPE
+### Workflow principale: workbook nazionale
 
 ```bash
-PYTHONPATH=src python -m siope_ranking.data_pipeline --start-year 2019 --end-year 2024
+PYTHONPATH=src python -m siope_ranking.data_pipeline --source workbook
 ```
 
-> Se l'endpoint non risponde o cambia formato, usa la modalità demo.
+Output:
 
-### Opzione B - dataset demo
+- `data/processed/university_kpis.csv`
+- `data/processed/university_category_breakdown.csv`
+
+### Fallback opzionale: endpoint SIOPE
 
 ```bash
-PYTHONPATH=src python -m siope_ranking.demo_data
+PYTHONPATH=src python -m siope_ranking.data_pipeline --source siope --start-year 2019 --end-year 2024
 ```
 
-Output: `data/processed/university_kpis.csv`
+## Importare un Excel e convertirlo in CSV
+
+### Conversione da terminale
+
+```bash
+PYTHONPATH=src python -m siope_ranking.tabular_import path/al/file.xlsx --sheet Sheet1
+```
+
+Output di default: `data/imported/<nome_file>.csv`
+
+### Conversione direttamente nella dashboard
+
+La sidebar della dashboard permette di:
+
+- caricare file `.xlsx`, `.xls`, `.xlsm` o `.csv`;
+- scegliere il foglio Excel da importare;
+- scaricare il CSV convertito oppure salvarlo in `data/imported/`;
+- visualizzare subito la tabella caricata.
+
+Se il file contiene gia le colonne KPI del progetto, ranking e trend vengono aggiornati usando i dati importati.
 
 ## Avviare la dashboard
 
