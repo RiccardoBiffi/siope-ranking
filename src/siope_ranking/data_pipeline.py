@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import difflib
+import io
 import re
 import unicodedata
+import zipfile
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
@@ -15,34 +18,214 @@ import requests
 DEFAULT_WORKBOOK_PATH = Path("data/processed/Bilanci, iscritti e docenti - nazionali.xlsx")
 DEFAULT_KPI_OUTPUT_PATH = Path("data/processed/university_kpis.csv")
 DEFAULT_BREAKDOWN_OUTPUT_PATH = Path("data/processed/university_category_breakdown.csv")
+DEFAULT_SIOPE_REGISTRY_PATH = Path("config/universities.csv")
+DEFAULT_SIOPE_START_YEAR = 2019
+DEFAULT_SIOPE_END_YEAR = 2024
+SIOPE_ANAGRAFICA_ZIP = "SIOPE_ANAGRAFICHE.zip"
+SIOPE_FLOW_FILES = {"INCASSO": "ENTRATE", "PAGAMENTO": "USCITE"}
+SIOPE_ENTITY_CODE_OVERRIDES = {
+    "universita di bari aldo moro": "000700261000000",
+    "universita del sannio": "014320800000000",
+    "universita di roma la sapienza": "000715784000000",
+    "universita di roma tor vergata": "000715824000000",
+    "universita di milano bicocca": "014435406000000",
+    "universita del piemonte orientale": "017779662000000",
+}
+SIOPE_ENTITY_NAME_ALIASES = {
+    "universita della campania luigi vanvitelli": "universita degli studi della campania luigi vanvitelli",
+    "universita federico ii di napoli": "universita degli studi di napoli federico ii",
+    "universita parthenope": "universita degli studi di napoli parthenope",
+    "universita l orientale": "universita degli studi di napoli l orientale",
+    "universita di bologna": "alma mater studiorum universita di bologna",
+    "universita di cassino e del lazio meridionale": "universita degli studi di cassino e del lazio meridionale",
+    "universita della valle d aosta": "universita della valle d aosta universite de la vallee d aoste",
+    "universita ca foscari venezia": "universita degli studi ca foscari di venezia",
+    "politecnico delle marche": "universita politecnica delle marche di ancona",
+    "universita gabriele d annunzio": "universita degli studi g d annunzio di chieti",
+    "scuola superiore sant anna": "scuola superiore di studi universitari di perfezionamento s anna",
+    "universita di modena e reggio emilia": "universita degli studi di modena e reggio e",
+}
+SIOPE_MATCH_STOPWORDS = {"universita", "studi", "degli", "delle", "della", "del", "di", "e", "la", "il", "dei"}
 
 
 @dataclass
 class SiopeConfig:
-    base_url: str = "https://www.siope.it/SiopeServerWS"
-    timeout: int = 30
+    base_url: str = "https://www.siope.it/Siope"
+    timeout: int = 60
+    user_agent: str = "Mozilla/5.0"
+
+
+def normalize_siope_match_name(value: object) -> str:
+    text = unicodedata.normalize("NFKD", normalize_name(value)).encode("ascii", "ignore").decode("ascii")
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    text = re.sub(r"\bstudi studi\b", "studi", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def score_siope_entity_match(target_name: str, candidate_name: str) -> float:
+    normalized_target = normalize_siope_match_name(target_name)
+    normalized_candidate = normalize_siope_match_name(candidate_name)
+    target_tokens = {
+        token for token in normalized_target.split() if token not in SIOPE_MATCH_STOPWORDS and len(token) > 1
+    }
+    candidate_tokens = {
+        token for token in normalized_candidate.split() if token not in SIOPE_MATCH_STOPWORDS and len(token) > 1
+    }
+
+    token_jaccard = len(target_tokens & candidate_tokens) / (len(target_tokens | candidate_tokens) or 1)
+    sequence_ratio = difflib.SequenceMatcher(None, normalized_target, normalized_candidate).ratio() * 0.85
+    containment = (
+        0.98
+        if normalized_target in normalized_candidate or normalized_candidate in normalized_target
+        else 0.0
+    )
+    return max(token_jaccard, sequence_ratio, containment)
+
+
+def parse_siope_zip_bytes(content: bytes, flow_type: str, entity_codes: set[str] | None = None) -> pd.DataFrame:
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        csv_names = [name for name in archive.namelist() if name.lower().endswith(".csv")]
+        if len(csv_names) != 1:
+            raise ValueError(f"Archivio SIOPE inatteso. File CSV trovati: {csv_names}")
+
+        filtered_chunks: list[pd.DataFrame] = []
+        with archive.open(csv_names[0]) as handle:
+            for chunk in pd.read_csv(
+                handle,
+                header=None,
+                names=["entity_code", "year", "month", "codgest", "importo"],
+                dtype={"entity_code": str, "year": str, "month": str, "codgest": str, "importo": str},
+                chunksize=250_000,
+            ):
+                if entity_codes is not None:
+                    chunk = chunk[chunk["entity_code"].isin(entity_codes)]
+                if chunk.empty:
+                    continue
+                chunk["tipo_operazione"] = flow_type
+                filtered_chunks.append(chunk)
+
+    if not filtered_chunks:
+        return pd.DataFrame(columns=["entity_code", "year", "month", "codgest", "importo", "tipo_operazione"])
+
+    frame = pd.concat(filtered_chunks, ignore_index=True)
+    frame["year"] = pd.to_numeric(frame["year"], errors="coerce").astype("Int64")
+    frame = frame.dropna(subset=["year"])
+    frame["year"] = frame["year"].astype(int)
+    frame["importo"] = pd.to_numeric(frame["importo"], errors="coerce") / 100
+    frame = frame.dropna(subset=["importo"])
+    return frame
+
+
+def resolve_siope_entities(registry: pd.DataFrame, active_entities: pd.DataFrame) -> pd.DataFrame:
+    registry = registry.copy()
+    registry["siope_code"] = registry["siope_code"].astype(str).str.zfill(6)
+    registry["match_name"] = registry["university"].map(normalize_siope_match_name)
+
+    active = active_entities.copy()
+    active["match_name"] = active["official_name"].map(normalize_siope_match_name)
+
+    resolved_rows: list[dict[str, object]] = []
+    unresolved: list[str] = []
+    for _, row in registry.iterrows():
+        match_name = row["match_name"]
+        if match_name in SIOPE_ENTITY_CODE_OVERRIDES:
+            matched = active[active["entity_code"] == SIOPE_ENTITY_CODE_OVERRIDES[match_name]]
+        else:
+            target_name = SIOPE_ENTITY_NAME_ALIASES.get(match_name, match_name)
+            matched = active[active["match_name"] == target_name]
+            if matched.empty:
+                scores = active["official_name"].map(lambda candidate: score_siope_entity_match(target_name, candidate))
+                best_index = scores.idxmax()
+                best_score = scores.loc[best_index]
+                second_best = scores.nlargest(2).iloc[-1] if len(scores) > 1 else 0.0
+                if best_score < 0.75 or (best_score - second_best < 0.08 and best_score < 0.97):
+                    unresolved.append(str(row["university"]))
+                    continue
+                matched = active.loc[[best_index]]
+
+        matched_row = matched.iloc[0]
+        resolved_row = row.to_dict()
+        resolved_row["siope_live_code"] = matched_row["entity_code"]
+        resolved_row["siope_official_name"] = matched_row["official_name"]
+        resolved_rows.append(resolved_row)
+
+    if unresolved:
+        unresolved_list = ", ".join(sorted(unresolved))
+        raise RuntimeError(f"Impossibile mappare gli atenei SIOPE correnti: {unresolved_list}")
+
+    return pd.DataFrame(resolved_rows)
 
 
 class SiopeClient:
-    """Client minimale per recuperare transazioni annuali da SIOPE."""
+    """Client per il download dei dataset pubblici annuali di SIOPE."""
 
     def __init__(self, config: SiopeConfig | None = None) -> None:
         self.config = config or SiopeConfig()
+        self.session = requests.Session()
+        self.session.headers.update(
+            {"User-Agent": self.config.user_agent, "Referer": f"{self.config.base_url}/"}
+        )
 
-    def fetch_university_year(self, siope_code: str, year: int) -> pd.DataFrame:
-        endpoint = f"{self.config.base_url}/export/transazioni"
-        params = {"ente": siope_code, "anno": year, "formato": "csv"}
-        response = requests.get(endpoint, params=params, timeout=self.config.timeout)
+    def fetch_public_zip(self, filename: str) -> bytes:
+        url = f"{self.config.base_url}/documenti/siope2/open/last/{filename}"
+        response = self.session.get(url, timeout=self.config.timeout)
         response.raise_for_status()
+        return response.content
 
-        frame = pd.read_csv(StringIO(response.text), sep=";")
-        required = {"tipo_operazione", "importo"}
-        if not required.issubset(frame.columns):
-            raise ValueError(
-                f"Formato inatteso per ente={siope_code} anno={year}. Colonne: {list(frame.columns)}"
+    def fetch_active_university_entities(self) -> pd.DataFrame:
+        content = self.fetch_public_zip(SIOPE_ANAGRAFICA_ZIP)
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            entity_files = [name for name in archive.namelist() if "ANAG_ENTI_SIOPE" in name]
+            if len(entity_files) != 1:
+                raise ValueError(f"Archivio anagrafica inatteso. File trovati: {entity_files}")
+
+            with archive.open(entity_files[0]) as handle:
+                entities = pd.read_csv(
+                    handle,
+                    header=None,
+                    names=[
+                        "entity_code",
+                        "start_date",
+                        "end_date",
+                        "tax_code",
+                        "official_name",
+                        "city_code",
+                        "province_code",
+                        "area_code",
+                        "compartment",
+                    ],
+                    dtype=str,
+                )
+
+        entities = entities[
+            (entities["compartment"] == "ATENEO") & (entities["end_date"] == "9999-12-31")
+        ].copy()
+        return entities
+
+    def fetch_year_transactions(self, year: int, registry_mapping: pd.DataFrame) -> pd.DataFrame:
+        live_code_map = dict(
+            zip(
+                registry_mapping["siope_live_code"].astype(str),
+                registry_mapping["siope_code"].astype(str).str.zfill(6),
+                strict=True,
             )
-        frame["siope_code"] = siope_code
-        frame["year"] = year
+        )
+        live_codes = set(live_code_map)
+        yearly_frames: list[pd.DataFrame] = []
+
+        for flow_type, flow_filename in SIOPE_FLOW_FILES.items():
+            content = self.fetch_public_zip(f"SIOPE_{flow_filename}.{year}.zip")
+            frame = parse_siope_zip_bytes(content, flow_type=flow_type, entity_codes=live_codes)
+            if frame.empty:
+                continue
+            frame["siope_code"] = frame["entity_code"].map(live_code_map)
+            yearly_frames.append(frame[["siope_code", "year", "tipo_operazione", "codgest", "importo"]])
+
+        if not yearly_frames:
+            return pd.DataFrame(columns=["siope_code", "year", "tipo_operazione", "codgest", "importo"])
+
+        return pd.concat(yearly_frames, ignore_index=True)
         return frame
 
 
@@ -181,19 +364,19 @@ def build_dataset(
     registry_path: Path, output_path: Path, years: Iterable[int], base_url: str | None = None
 ) -> pd.DataFrame:
     registry = pd.read_csv(registry_path)
-    registry["siope_code"] = registry["siope_code"].astype(str)
-
+    registry["siope_code"] = registry["siope_code"].astype(str).str.zfill(6)
     client = SiopeClient(SiopeConfig(base_url=base_url or SiopeConfig.base_url))
+    registry_mapping = resolve_siope_entities(registry, client.fetch_active_university_entities())
     all_rows: list[pd.DataFrame] = []
     failures: list[str] = []
 
-    for _, row in registry.iterrows():
-        for year in years:
-            try:
-                frame = client.fetch_university_year(str(row["siope_code"]), int(year))
+    for year in years:
+        try:
+            frame = client.fetch_year_transactions(int(year), registry_mapping)
+            if not frame.empty:
                 all_rows.append(frame)
-            except Exception as exc:  # noqa: BLE001
-                failures.append(f"{row['university']} ({row['siope_code']} - {year}): {exc}")
+        except Exception as exc:  # noqa: BLE001
+            failures.append(f"{year}: {exc}")
 
     if not all_rows:
         raise RuntimeError(
@@ -487,23 +670,32 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build dataset ranking atenei")
     parser.add_argument(
         "--source",
-        choices=["workbook", "siope"],
-        default="workbook",
-        help="Origine dati: workbook Excel preprocessato oppure endpoint SIOPE.",
+        choices=["auto", "workbook", "siope"],
+        default="auto",
+        help="Origine dati: workbook, download online SIOPE oppure scelta automatica.",
     )
     parser.add_argument("--workbook", default=str(DEFAULT_WORKBOOK_PATH))
     parser.add_argument("--output", default=str(DEFAULT_KPI_OUTPUT_PATH))
     parser.add_argument("--breakdown-output", default=str(DEFAULT_BREAKDOWN_OUTPUT_PATH))
-    parser.add_argument("--registry", default="config/universities.csv")
-    parser.add_argument("--start-year", type=int, default=2019)
-    parser.add_argument("--end-year", type=int, default=2024)
+    parser.add_argument("--registry", default=str(DEFAULT_SIOPE_REGISTRY_PATH))
+    parser.add_argument("--start-year", type=int)
+    parser.add_argument("--end-year", type=int)
     parser.add_argument("--base-url", default=SiopeConfig.base_url)
     return parser.parse_args()
 
 
+def resolve_source(args: argparse.Namespace) -> str:
+    if args.source != "auto":
+        return args.source
+    if args.start_year is not None or args.end_year is not None:
+        return "siope"
+    return "workbook"
+
+
 def main() -> None:
     args = parse_args()
-    if args.source == "workbook":
+    source = resolve_source(args)
+    if source == "workbook":
         build_workbook_dataset(
             workbook_path=Path(args.workbook),
             output_path=Path(args.output),
@@ -511,7 +703,9 @@ def main() -> None:
         )
         return
 
-    years = range(args.start_year, args.end_year + 1)
+    start_year = args.start_year or DEFAULT_SIOPE_START_YEAR
+    end_year = args.end_year or DEFAULT_SIOPE_END_YEAR
+    years = range(start_year, end_year + 1)
     build_dataset(
         registry_path=Path(args.registry),
         output_path=Path(args.output),

@@ -43,11 +43,20 @@ Output:
 - `data/processed/university_kpis.csv`
 - `data/processed/university_category_breakdown.csv`
 
-### Fallback opzionale: endpoint SIOPE
+### Fallback opzionale: download online SIOPE
 
 ```bash
 PYTHONPATH=src python -m siope_ranking.data_pipeline --source siope --start-year 2019 --end-year 2024
 ```
+
+Oppure, in modalita automatica, basta passare l'intervallo anni:
+
+```bash
+PYTHONPATH=src python -m siope_ranking.data_pipeline --start-year 2019 --end-year 2024
+```
+
+La pipeline online usa i file pubblici annuali `SIOPE_ENTRATE.<anno>.zip`, `SIOPE_USCITE.<anno>.zip`
+e `SIOPE_ANAGRAFICHE.zip` pubblicati sul sito ufficiale SIOPE.
 
 ## Importare un Excel e convertirlo in CSV
 
